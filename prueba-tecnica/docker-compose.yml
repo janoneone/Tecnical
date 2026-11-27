@@ -1,0 +1,53 @@
+# Entorno de la prueba técnica: Oracle 23ai Free + RabbitMQ 4.
+# Ambas imágenes son multiarquitectura (amd64 y arm64).
+#
+#   docker compose up -d        # levantar
+#   docker compose ps           # esperar a que ambos servicios estén "healthy"
+#   docker compose down -v      # eliminar todo (incluidos los datos) para partir de cero
+
+name: prueba-tecnica-backend
+
+services:
+  oracle:
+    image: gvenzl/oracle-free:23.26.0-slim-faststart
+    container_name: prueba-oracle
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_SYS_PASSWORD:-OracleSys2026}
+      APP_USER: ${ORACLE_APP_USER:-prueba}
+      APP_USER_PASSWORD: ${ORACLE_APP_PASSWORD:-prueba}
+    ports:
+      - "${ORACLE_PORT:-1521}:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+      # Scripts que se ejecutan SOLO en el primer arranque (volumen vacío).
+      - ./oracle/init:/container-entrypoint-initdb.d:ro
+      - ./oracle/sql:/opt/prueba/sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: prueba-rabbitmq
+    hostname: prueba-rabbitmq
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      # Carga usuario, permisos y la cola "pesos_especiales" al arrancar.
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/20-prueba.conf:ro
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  oracle-data:
+  rabbitmq-data:
